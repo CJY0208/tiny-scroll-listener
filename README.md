@@ -4,6 +4,8 @@
 
 - - -
 
+<img src="./doc/TinyScrollListenerDemo.gif">
+
 ## 安装
 
 ```bash
@@ -25,7 +27,7 @@ const scrollListener = new TinyScrollListener({
   // 触底函数相关
   distanceToReachEnd: 100, // 触底函数触发距离，默认为 100px
   async onEndReached(done) {
-    console.log('到达了底部')
+    console.log('到达了底部，锁定，两秒后释放')
 
     /**
      * 每次触发 onEndReached 函数后会自动阻止下一次触发，需要执行 done 函数来释放阻止
@@ -33,7 +35,7 @@ const scrollListener = new TinyScrollListener({
      * 如果 isOver 为 true 则不会再触发后续的 onEndReached
      * （例如已经加载了全部页，不需要再监听触底事件）
      */
-    await delay(3000)
+    await delay(2000)
 
     const isOver = false
     done(isOver)
