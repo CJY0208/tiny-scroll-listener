@@ -22,7 +22,7 @@ const delay = time => new Promise(resolve => setTimeout(resolve, time))
 const scrollListener = new TinyScrollListener({
 
   // 滚动容器，需设置 overflow: scroll/auto; 
-  element: document.getElementId('scrollContainer'),
+  element: document.getElementById('scrollContainer'),
 
   // 触底函数相关
   distanceToReachEnd: 100, // 触底函数触发距离，默认为 100px
