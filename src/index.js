@@ -1,14 +1,18 @@
 const isFunction = value => typeof value === 'function'
 const OUTSIDE = 'OUTSIDE'
 const INSIDE = 'INSIDE'
+const DIRECTION_DOWN = 'DOWN'
+const DIRECTION_UP = 'UP'
 const SCROLL_EVENT_NAME = 'scroll'
+const getEventDistance = event =>
+  isFunction(event.distance) ? event.distance() : event.distance
 
 export default class TinyScrollListener {
   constructor({
     distanceToReachEnd = 100,
     onEndReached,
     element,
-    distanceEvents = []
+    distanceEvents: configDistanceEvents = []
   }) {
     // 若无滚动载体，报错并退出
     if (typeof element === 'undefined') {
@@ -18,11 +22,8 @@ export default class TinyScrollListener {
 
     // 判断滚动载体是否为 body
     const isBody = element === document.body
-
-    // 初始化滚动事件节点状态
-    const distanceEventsStatus = distanceEvents.map(
-      ({ distance }) => (element.scrollTop > distance ? OUTSIDE : INSIDE)
-    )
+    const getScrollTop = () =>
+      isBody ? document.documentElement.scrollTop : element.scrollTop
 
     /**
      * 若使用触底函数，则启用相关逻辑
@@ -61,9 +62,15 @@ export default class TinyScrollListener {
         }
       }
 
-      distanceEvents.push(endReachedEvents)
-      distanceEventsStatus.push(INSIDE)
+      configDistanceEvents.push(endReachedEvents)
     }
+
+    const distanceEvents = configDistanceEvents
+      .filter(event => getEventDistance(event) >= 0)
+      .map(event => ({
+        ...event,
+        status: getScrollTop() > getEventDistance(event) ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+      }))
 
     // 若无滚动事件可用，报错并退出
     if (distanceEvents.length === 0) {
@@ -71,45 +78,51 @@ export default class TinyScrollListener {
       return
     }
 
+    const goingInEvents = [...distanceEvents].sort(
+      (prev, next) => getEventDistance(next) - getEventDistance(prev)
+    )
+    const goingOutEvents = [...distanceEvents].sort(
+      (prev, next) => getEventDistance(prev) - getEventDistance(next)
+    )
+
+    let prevScrollTop = getScrollTop()
     const onScroll = e => {
       e.stopPropagation()
 
       // body 元素的 scrollTop 取值时不同于普通元素
-      const scrollTop = isBody
-        ? document.documentElement.scrollTop
-        : element.scrollTop
+      const scrollTop = getScrollTop()
+      const direction =
+        scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP
+
+      const distanceEvents =
+        direction === DIRECTION_DOWN ? goingOutEvents : goingInEvents
 
       // 每次 onScroll 触发时对各事件的监听
-      distanceEvents.forEach(
-        (
-          {
-            distance = -1,
-            onGoingIn = () => undefined,
-            onGoingOut = () => undefined
-          },
-          idx
-        ) => {
-          if (isFunction(distance)) {
-            distance = distance()
-          }
+      distanceEvents.forEach(event => {
+        const {
+          onGoingIn = () => undefined,
+          onGoingOut = () => undefined,
+          status
+        } = event
+        const distance = getEventDistance(event)
 
-          // 仅当状态值变更时触发 onGoingIn、onGoingOut 函数
-          switch (distanceEventsStatus[idx]) {
-            case INSIDE:
-              if (scrollTop > distance) {
-                onGoingOut()
-                distanceEventsStatus[idx] = OUTSIDE
-              }
-              break
-            case OUTSIDE:
-              if (scrollTop <= distance) {
-                onGoingIn()
-                distanceEventsStatus[idx] = INSIDE
-              }
-              break
-          }
+        // 仅当状态值变更时触发 onGoingIn、onGoingOut 函数
+        switch (status) {
+          case INSIDE:
+            if (scrollTop > distance) {
+              onGoingOut()
+              event.status = OUTSIDE
+            }
+            break
+          case OUTSIDE:
+            if (scrollTop <= distance) {
+              onGoingIn()
+              event.status = INSIDE
+            }
+            break
         }
-      )
+      })
+      prevScrollTop = scrollTop
     }
 
     /**

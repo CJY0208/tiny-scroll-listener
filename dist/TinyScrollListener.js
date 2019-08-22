@@ -4,6 +4,10 @@
   (global.TinyScrollListener = factory());
 }(this, (function () { 'use strict';
 
+  var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+  function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
+
   function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
   var isFunction = function isFunction(value) {
@@ -11,7 +15,12 @@
   };
   var OUTSIDE = 'OUTSIDE';
   var INSIDE = 'INSIDE';
+  var DIRECTION_DOWN = 'DOWN';
+  var DIRECTION_UP = 'UP';
   var SCROLL_EVENT_NAME = 'scroll';
+  var getEventDistance = function getEventDistance(event) {
+    return isFunction(event.distance) ? event.distance() : event.distance;
+  };
 
   var TinyScrollListener = function TinyScrollListener(_ref) {
     var _this = this;
@@ -21,7 +30,7 @@
         onEndReached = _ref.onEndReached,
         element = _ref.element,
         _ref$distanceEvents = _ref.distanceEvents,
-        distanceEvents = _ref$distanceEvents === undefined ? [] : _ref$distanceEvents;
+        configDistanceEvents = _ref$distanceEvents === undefined ? [] : _ref$distanceEvents;
 
     _classCallCheck(this, TinyScrollListener);
 
@@ -33,12 +42,9 @@
 
     // 判断滚动载体是否为 body
     var isBody = element === document.body;
-
-    // 初始化滚动事件节点状态
-    var distanceEventsStatus = distanceEvents.map(function (_ref2) {
-      var distance = _ref2.distance;
-      return element.scrollTop > distance ? OUTSIDE : INSIDE;
-    });
+    var getScrollTop = function getScrollTop() {
+      return isBody ? document.documentElement.scrollTop : element.scrollTop;
+    };
 
     /**
      * 若使用触底函数，则启用相关逻辑
@@ -76,9 +82,16 @@
         }
       };
 
-      distanceEvents.push(endReachedEvents);
-      distanceEventsStatus.push(INSIDE);
+      configDistanceEvents.push(endReachedEvents);
     }
+
+    var distanceEvents = configDistanceEvents.filter(function (event) {
+      return getEventDistance(event) >= 0;
+    }).map(function (event) {
+      return _extends({}, event, {
+        status: getScrollTop() > getEventDistance(event) ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+      });
+    });
 
     // 若无滚动事件可用，报错并退出
     if (distanceEvents.length === 0) {
@@ -86,45 +99,54 @@
       return;
     }
 
+    var goingInEvents = [].concat(_toConsumableArray(distanceEvents)).sort(function (prev, next) {
+      return getEventDistance(next) - getEventDistance(prev);
+    });
+    var goingOutEvents = [].concat(_toConsumableArray(distanceEvents)).sort(function (prev, next) {
+      return getEventDistance(prev) - getEventDistance(next);
+    });
+
+    var prevScrollTop = getScrollTop();
     var onScroll = function onScroll(e) {
       e.stopPropagation();
 
       // body 元素的 scrollTop 取值时不同于普通元素
-      var scrollTop = isBody ? document.documentElement.scrollTop : element.scrollTop;
+      var scrollTop = getScrollTop();
+      var direction = scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP;
+
+      var distanceEvents = direction === DIRECTION_DOWN ? goingOutEvents : goingInEvents;
 
       // 每次 onScroll 触发时对各事件的监听
-      distanceEvents.forEach(function (_ref3, idx) {
-        var _ref3$distance = _ref3.distance,
-            distance = _ref3$distance === undefined ? -1 : _ref3$distance,
-            _ref3$onGoingIn = _ref3.onGoingIn,
-            onGoingIn = _ref3$onGoingIn === undefined ? function () {
+      distanceEvents.forEach(function (event) {
+        var _event$onGoingIn = event.onGoingIn,
+            onGoingIn = _event$onGoingIn === undefined ? function () {
           return undefined;
-        } : _ref3$onGoingIn,
-            _ref3$onGoingOut = _ref3.onGoingOut,
-            onGoingOut = _ref3$onGoingOut === undefined ? function () {
+        } : _event$onGoingIn,
+            _event$onGoingOut = event.onGoingOut,
+            onGoingOut = _event$onGoingOut === undefined ? function () {
           return undefined;
-        } : _ref3$onGoingOut;
+        } : _event$onGoingOut,
+            status = event.status;
 
-        if (isFunction(distance)) {
-          distance = distance();
-        }
+        var distance = getEventDistance(event);
 
         // 仅当状态值变更时触发 onGoingIn、onGoingOut 函数
-        switch (distanceEventsStatus[idx]) {
+        switch (status) {
           case INSIDE:
             if (scrollTop > distance) {
               onGoingOut();
-              distanceEventsStatus[idx] = OUTSIDE;
+              event.status = OUTSIDE;
             }
             break;
           case OUTSIDE:
             if (scrollTop <= distance) {
               onGoingIn();
-              distanceEventsStatus[idx] = INSIDE;
+              event.status = INSIDE;
             }
             break;
         }
       });
+      prevScrollTop = scrollTop;
     };
 
     /**
