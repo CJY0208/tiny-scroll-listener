@@ -4,7 +4,8 @@
 
 - - -
 
-<img src="./doc/TinyScrollListenerDemo.gif">
+<img src="./docs/TinyScrollListenerDemo.gif">
+<img src="./docs/InstanceDemo.gif">
 
 ## 安装
 
