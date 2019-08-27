@@ -6,6 +6,8 @@
 
   var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
+  var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
   function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
 
   function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -15,109 +17,47 @@
   };
   var OUTSIDE = 'OUTSIDE';
   var INSIDE = 'INSIDE';
-  var DIRECTION_DOWN = 'DOWN';
-  var DIRECTION_UP = 'UP';
+  var DIRECTION_DOWN = 1;
+  var DIRECTION_UP = -1;
   var SCROLL_EVENT_NAME = 'scroll';
   var getEventDistance = function getEventDistance(event) {
     return isFunction(event.distance) ? event.distance() : event.distance;
   };
 
-  var TinyScrollListener = function TinyScrollListener(_ref) {
-    var _this = this;
+  /**
+   * 默认使用 requestAnimationFrame 优化 scroll 监听
+   */
+  var defaultGetScrollHandler = function defaultGetScrollHandler(onScroll) {
+    var rAFLock = false;
+    var scrollHandler = function scrollHandler(e) {
+      if (rAFLock) return;
 
-    var _ref$distanceToReachE = _ref.distanceToReachEnd,
-        distanceToReachEnd = _ref$distanceToReachE === undefined ? 100 : _ref$distanceToReachE,
-        onEndReached = _ref.onEndReached,
-        element = _ref.element,
-        _ref$distanceEvents = _ref.distanceEvents,
-        configDistanceEvents = _ref$distanceEvents === undefined ? [] : _ref$distanceEvents;
-
-    _classCallCheck(this, TinyScrollListener);
-
-    // 若无滚动载体，报错并退出
-    if (typeof element === 'undefined') {
-      console.error('Need Scroll Container!');
-      return;
-    }
-
-    // 判断滚动载体是否为 body
-    var isBody = element === document.body;
-    var getScrollTop = function getScrollTop() {
-      return isBody ? document.documentElement.scrollTop : element.scrollTop;
+      requestAnimationFrame(function () {
+        onScroll(e);
+        rAFLock = false;
+      });
+      rAFLock = true;
     };
 
-    /**
-     * 若使用触底函数，则启用相关逻辑
-     */
-    if (isFunction(onEndReached)) {
-      // 触底函数是否被冻结，将此值置为 true 则停止使用触底函数
-      var isEndReacherFreeze = false;
+    return scrollHandler;
+  };
 
-      /**
-       * 每次触发 onEndReached 函数后会自动阻止下一次触发，需要执行 done 函数来释放阻止
-       * （例如滚动到底部后开始做网络请求时，再次滚动到底部不会触发二次请求）
-       * 如果 isOver 为 true 则不会再触发后续的 onEndReached
-       * （例如已经加载了全部页，不需要再监听触底事件）
-       */
-      var done = function done(isOver) {
-        if (!isOver) {
-          isEndReacherFreeze = false;
-          return;
-        }
+  var TinyScrollListener = function () {
+    function TinyScrollListener(config) {
+      var _this = this;
 
-        if (distanceEvents.length === 1) {
-          _this.destroy();
-        }
+      _classCallCheck(this, TinyScrollListener);
+
+      this.config = {};
+
+      this.destroy = function () {
+        return null;
       };
 
-      var endReachedEvents = {
-        distance: function distance() {
-          return element.scrollHeight - element.offsetHeight - distanceToReachEnd;
-        },
+      this.dynamicEvents = [];
+      this.staticEvents = [];
 
-        onGoingOut: function onGoingOut() {
-          if (isEndReacherFreeze) return;
-          isEndReacherFreeze = true;
-          onEndReached(done);
-        }
-      };
-
-      configDistanceEvents.push(endReachedEvents);
-    }
-
-    var distanceEvents = configDistanceEvents.filter(function (event) {
-      return getEventDistance(event) >= 0;
-    }).map(function (event) {
-      return _extends({}, event, {
-        status: getScrollTop() > getEventDistance(event) ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
-      });
-    });
-
-    // 若无滚动事件可用，报错并退出
-    if (distanceEvents.length === 0) {
-      console.error('Need Distance Events!');
-      return;
-    }
-
-    var goingInEvents = [].concat(_toConsumableArray(distanceEvents)).sort(function (prev, next) {
-      return getEventDistance(next) - getEventDistance(prev);
-    });
-    var goingOutEvents = [].concat(_toConsumableArray(distanceEvents)).sort(function (prev, next) {
-      return getEventDistance(prev) - getEventDistance(next);
-    });
-
-    var prevScrollTop = getScrollTop();
-    var onScroll = function onScroll(e) {
-      e.stopPropagation();
-
-      // body 元素的 scrollTop 取值时不同于普通元素
-      var scrollTop = getScrollTop();
-      var direction = scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP;
-
-      var distanceEvents = direction === DIRECTION_DOWN ? goingOutEvents : goingInEvents;
-
-      // 每次 onScroll 触发时对各事件的监听
-      distanceEvents.forEach(function (event) {
+      this.walkEvent = function (event, scrollTop) {
         var _event$onGoingIn = event.onGoingIn,
             onGoingIn = _event$onGoingIn === undefined ? function () {
           return undefined;
@@ -145,35 +85,217 @@
             }
             break;
         }
-      });
-      prevScrollTop = scrollTop;
-    };
 
-    /**
-     * 使用 requestAnimationFrame 优化 scroll 监听
-     */
-    var rAFLock = false;
-    var scrollHandler = function scrollHandler(e) {
-      if (rAFLock) return;
-      requestAnimationFrame(function () {
-        onScroll.call(element, e);
-        rAFLock = false;
-      });
-      rAFLock = true;
+        return event.status !== status;
+      };
+
+      this.walkStaticEvent = function (_ref) {
+        var direction = _ref.direction,
+            scrollTop = _ref.scrollTop;
+
+        var current = _this.currentStaticEvent;
+        var prev = current.prevEvent || current.getPrevEvent();
+        var next = current.nextEvent || current.getNextEvent();
+        var target = direction === DIRECTION_DOWN ? current : prev;
+
+        if (target) {
+          var changed = _this.walkEvent(target, scrollTop);
+
+          // 若发生状态变迁
+          if (changed) {
+            _this.currentStaticEvent = (direction === DIRECTION_DOWN ? next : prev) || current;
+
+            _this.walkStaticEvent({ direction: direction, scrollTop: scrollTop });
+          }
+        }
+      };
+
+      this.walkDynamicEvents = function (_ref2) {
+        var direction = _ref2.direction,
+            scrollTop = _ref2.scrollTop;
+
+        _this.dynamicEvents.sort(function (prev, next) {
+          return (getEventDistance(prev) - getEventDistance(next)) * direction;
+        }).forEach(function (event) {
+          _this.walkEvent(event, scrollTop);
+        });
+      };
+
+      this.config = config;
+      this.init();
     }
 
-    // .addEventListener('scroll', 在 body 上无效，需调用到 document 上
-    ;(isBody ? document : element).addEventListener(SCROLL_EVENT_NAME, scrollHandler);
+    _createClass(TinyScrollListener, [{
+      key: 'init',
+      value: function init() {
+        var _this2 = this;
 
-    this.destroy = function () {
-      return (
-        // .removeEventListener('scroll', 在 body 上无效，需调用到 document 上
-        (isBody ? document : element).removeEventListener(SCROLL_EVENT_NAME, scrollHandler)
-      );
-    };
+        var _config = this.config,
+            element = _config.element,
+            _config$scrollHandler = _config.scrollHandler,
+            getScrollHandler = _config$scrollHandler === undefined ? defaultGetScrollHandler : _config$scrollHandler,
+            configGetScrollTop = _config.getScrollTop;
 
-    return this;
-  };
+        // 若无滚动载体，报错并退出
+
+        if (typeof element === 'undefined') {
+          console.error('Need Scroll Container!');
+          return;
+        }
+
+        var getScrollTop = isFunction(configGetScrollTop) ? configGetScrollTop : function () {
+          return element.scrollTop;
+        };
+
+        this.getScrollTop = getScrollTop;
+
+        this.genDynamicEvents();
+        this.genStaticEvents();
+
+        var prevScrollTop = getScrollTop();
+        var onScroll = function onScroll(e) {
+          e.stopPropagation();
+
+          // body 元素的 scrollTop 取值时不同于普通元素
+          var scrollTop = getScrollTop();
+          var direction = scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP;
+          var walkParams = {
+            scrollTop: scrollTop,
+            direction: direction
+          };
+
+          _this2.walkStaticEvent(walkParams);
+          _this2.walkDynamicEvents(walkParams);
+
+          prevScrollTop = scrollTop;
+        };
+
+        var scrollHandler = getScrollHandler(onScroll);
+
+        element.addEventListener(SCROLL_EVENT_NAME, scrollHandler);
+
+        this.destroy = function () {
+          return element.removeEventListener(SCROLL_EVENT_NAME, scrollHandler);
+        };
+
+        return this;
+      }
+    }, {
+      key: 'getEndReachedEvent',
+      value: function getEndReachedEvent() {
+        var _this3 = this;
+
+        var _config2 = this.config,
+            _config2$distanceToRe = _config2.distanceToReachEnd,
+            distanceToReachEnd = _config2$distanceToRe === undefined ? 100 : _config2$distanceToRe,
+            onEndReached = _config2.onEndReached,
+            element = _config2.element;
+
+        /**
+         * 若使用触底函数，则启用相关逻辑
+         */
+
+        if (!isFunction(onEndReached)) {
+          return;
+        }
+
+        // 触底函数是否被冻结，将此值置为 true 则停止使用触底函数
+        var isEndReacherFreeze = false;
+
+        /**
+         * 每次触发 onEndReached 函数后会自动阻止下一次触发，需要执行 done 函数来释放阻止
+         * （例如滚动到底部后开始做网络请求时，再次滚动到底部不会触发二次请求）
+         * 如果 isOver 为 true 则不会再触发后续的 onEndReached
+         * （例如已经加载了全部数据，不需要再监听触底事件）
+         */
+        var done = function done(isOver) {
+          if (!isOver) {
+            isEndReacherFreeze = false;
+            return;
+          } else {
+            if (_this3.staticEvents.length === 0 && _this3.dynamicEvents.length === 1 && _this3.dynamicEvents[0] === endReachedEvent) {
+              _this3.destroy();
+            }
+          }
+        };
+
+        var endReachedEvent = {
+          dynamic: true,
+          distance: function distance() {
+            return element.scrollHeight - element.offsetHeight - distanceToReachEnd;
+          },
+          onGoingOut: function onGoingOut() {
+            if (isEndReacherFreeze) return;
+            isEndReacherFreeze = true;
+            onEndReached(done);
+          }
+        };
+
+        return endReachedEvent;
+      }
+    }, {
+      key: 'genDynamicEvents',
+      value: function genDynamicEvents() {
+        var _config$distanceEvent = this.config.distanceEvents,
+            configDistanceEvents = _config$distanceEvent === undefined ? [] : _config$distanceEvent;
+
+        var endReachedEvent = this.getEndReachedEvent();
+        var scrollTop = this.getScrollTop();
+
+        var dynamicEvents = [].concat(_toConsumableArray(configDistanceEvents), [endReachedEvent]).filter(function (event) {
+          return event && event.dynamic;
+        }).map(function (event) {
+          return _extends({}, event, {
+            status: scrollTop > event.distance ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+          });
+        });
+        this.dynamicEvents = dynamicEvents;
+      }
+    }, {
+      key: 'genStaticEvents',
+      value: function genStaticEvents() {
+        var _config$distanceEvent2 = this.config.distanceEvents,
+            configDistanceEvents = _config$distanceEvent2 === undefined ? [] : _config$distanceEvent2;
+
+        var scrollTop = this.getScrollTop();
+
+        var staticEvents = configDistanceEvents.map(function (event) {
+          return _extends({}, event, {
+            distance: getEventDistance(event)
+          });
+        }).filter(function (event) {
+          return event.distance >= 0 && !event.dynamic;
+        }).map(function (event, idx) {
+          var staticEvent = _extends({}, event, {
+            prevEvent: undefined,
+            nextEvent: undefined,
+            getPrevEvent: function getPrevEvent() {
+              var prevEvent = staticEvents[idx - 1] || null;
+              staticEvent.prevEvent = prevEvent;
+
+              return prevEvent;
+            },
+            getNextEvent: function getNextEvent() {
+              var nextEvent = staticEvents[idx + 1] || null;
+              staticEvent.nextEvent = nextEvent;
+
+              return nextEvent;
+            },
+            status: scrollTop > event.distance ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+          });
+
+          return staticEvent;
+        });
+
+        this.staticEvents = staticEvents;
+        this.currentStaticEvent = staticEvents.find(function (event) {
+          return event.distance >= scrollTop;
+        });
+      }
+    }]);
+
+    return TinyScrollListener;
+  }();
 
   return TinyScrollListener;
 
