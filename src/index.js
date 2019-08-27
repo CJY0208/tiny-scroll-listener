@@ -52,14 +52,20 @@ export default class TinyScrollListener {
 
     this.getScrollTop = getScrollTop
 
+    // 初始化动态事件
     this.genDynamicEvents()
+    // 初始化静态事件
     this.genStaticEvents()
+
+    if (this.staticEvents.length === 0 && this.dynamicEvents.length === 0) {
+      console.error('Need Events!')
+      return
+    }
 
     let prevScrollTop = getScrollTop()
     const onScroll = e => {
       e.stopPropagation()
 
-      // body 元素的 scrollTop 取值时不同于普通元素
       const scrollTop = getScrollTop()
       const direction =
         scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP
@@ -84,6 +90,7 @@ export default class TinyScrollListener {
     return this
   }
 
+  // 生成触底事件监听器
   getEndReachedEvent() {
     const { distanceToReachEnd = 100, onEndReached, element } = this.config
 
@@ -132,6 +139,7 @@ export default class TinyScrollListener {
     return endReachedEvent
   }
 
+  // 动态事件：distance 动态变化的事件，如触底事件需要根据容器高度决定触发条件，容器高度可能发生变化
   dynamicEvents = []
   genDynamicEvents() {
     const { distanceEvents: configDistanceEvents = [] } = this.config
@@ -139,7 +147,7 @@ export default class TinyScrollListener {
     const scrollTop = this.getScrollTop()
 
     const dynamicEvents = [...configDistanceEvents, endReachedEvent]
-      .filter(event => event && event.dynamic)
+      .filter(event => event && event.dynamic && isFunction(event.distance))
       .map(event => ({
         ...event,
         status: scrollTop > event.distance ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
@@ -147,6 +155,7 @@ export default class TinyScrollListener {
     this.dynamicEvents = dynamicEvents
   }
 
+  // 静态事件：distance 默认不变或只初始化一次后续不变化的事件
   currentStaticEvent
   staticEvents = []
   genStaticEvents() {
@@ -162,6 +171,8 @@ export default class TinyScrollListener {
       .map((event, idx) => {
         const staticEvent = {
           ...event,
+          status: scrollTop > event.distance ? OUTSIDE : INSIDE, // 初始化滚动事件节点状态
+          // 使用链表结构优化静态事件的触发顺序
           prevEvent: undefined,
           nextEvent: undefined,
           getPrevEvent: () => {
@@ -175,8 +186,7 @@ export default class TinyScrollListener {
             staticEvent.nextEvent = nextEvent
 
             return nextEvent
-          },
-          status: scrollTop > event.distance ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+          }
         }
 
         return staticEvent
@@ -229,6 +239,7 @@ export default class TinyScrollListener {
         this.currentStaticEvent =
           (direction === DIRECTION_DOWN ? next : prev) || current
 
+        // 递归遍历下一个静态事件，保证单次大跨度滚动时可触发中间所有的静态事件
         this.walkStaticEvent({ direction, scrollTop })
       }
     }

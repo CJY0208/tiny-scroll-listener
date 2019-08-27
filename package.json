@@ -1,6 +1,6 @@
 {
   "name": "tiny-scroll-listener",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "一个监听滚动的小工具",
   "main": "index.js",
   "scripts": {
