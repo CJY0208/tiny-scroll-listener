@@ -1,0 +1,10 @@
+docs
+node_modules
+src
+.gitignore
+.npmignore
+.babelrc
+# CONTRIBUTING.md
+.prettierrc
+rollup.config.js
+yarn.lock

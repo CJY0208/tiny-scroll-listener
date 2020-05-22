@@ -2,7 +2,7 @@
 
 一个监听滚动的小工具
 
-- - -
+---
 
 <img src="./docs/TinyScrollListenerDemo.gif">
 <img src="./docs/InstanceDemo.gif">
@@ -18,11 +18,10 @@ npm install tiny-scroll-listener
 ```javascript
 import TinyScrollListener from 'tiny-scroll-listener'
 
-const delay = time => new Promise(resolve => setTimeout(resolve, time))
+const delay = (time) => new Promise((resolve) => setTimeout(resolve, time))
 
 const scrollListener = new TinyScrollListener({
-
-  // 滚动容器，需设置 overflow: scroll/auto; 
+  // 滚动容器，需设置 overflow: scroll/auto;
   element: document.getElementById('scrollContainer'),
 
   // 触底函数相关
@@ -57,10 +56,16 @@ const scrollListener = new TinyScrollListener({
       },
       onGoingOut() {
         console.log('滚动距离高于了 300px')
-      }
-    }
-  ]
+      },
+    },
+  ],
+
+  /**
+   * 滚动的监听方向，vertical 为纵向，horizontal 为横向
+   */
+  direstion: 'vertical',
 })
 
 // 手动解除监听
 scrollListener.destroy()
+```

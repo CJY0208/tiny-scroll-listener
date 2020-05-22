@@ -1,18 +1,18 @@
-const isFunction = value => typeof value === 'function'
+const isFunction = (value) => typeof value === 'function'
 const OUTSIDE = 'OUTSIDE'
 const INSIDE = 'INSIDE'
-const DIRECTION_DOWN = 1
-const DIRECTION_UP = -1
+const DIRECTION_FORWARD = 1
+const DIRECTION_BACKWARD = -1
 const SCROLL_EVENT_NAME = 'scroll'
-const getEventDistance = event =>
+const getEventDistance = (event) =>
   isFunction(event.distance) ? event.distance() : event.distance
 
 /**
  * 默认使用 requestAnimationFrame 优化 scroll 监听
  */
-const defaultGetScrollHandler = onScroll => {
+const defaultGetScrollHandler = (onScroll) => {
   let rAFLock = false
-  const scrollHandler = e => {
+  const scrollHandler = (e) => {
     if (rAFLock) return
 
     requestAnimationFrame(() => {
@@ -25,7 +25,7 @@ const defaultGetScrollHandler = onScroll => {
   return scrollHandler
 }
 
-export default class TinyScrollListener {
+export default class ScrollListener {
   config = {}
   constructor(config) {
     this.config = config
@@ -37,7 +37,8 @@ export default class TinyScrollListener {
     const {
       element,
       scrollHandler: getScrollHandler = defaultGetScrollHandler,
-      getScrollTop: configGetScrollTop
+      getScrollDistance: configGetScrollDistance,
+      direction = 'vertical',
     } = this.config
 
     // 若无滚动载体，报错并退出
@@ -46,38 +47,37 @@ export default class TinyScrollListener {
       return
     }
 
-    const getScrollTop = isFunction(configGetScrollTop)
-      ? configGetScrollTop
-      : () => element.scrollTop
+    const getScrollDistance = isFunction(configGetScrollDistance)
+      ? configGetScrollDistance
+      : {
+          vertical: () => element.scrollTop,
+          horizontal: () => element.scrollLeft,
+        }[direction]
 
-    this.getScrollTop = getScrollTop
+    this.getScrollDistance = getScrollDistance
 
-    // 初始化动态事件
     this.genDynamicEvents()
-    // 初始化静态事件
     this.genStaticEvents()
 
-    if (this.staticEvents.length === 0 && this.dynamicEvents.length === 0) {
-      console.error('Need Events!')
-      return
-    }
-
-    let prevScrollTop = getScrollTop()
-    const onScroll = e => {
+    let prevScrollDistance = getScrollDistance()
+    const onScroll = (e) => {
       e.stopPropagation()
 
-      const scrollTop = getScrollTop()
+      // body 元素的 scrollDistance 取值时不同于普通元素
+      const scrollDistance = getScrollDistance()
       const direction =
-        scrollTop > prevScrollTop ? DIRECTION_DOWN : DIRECTION_UP
+        scrollDistance > prevScrollDistance
+          ? DIRECTION_FORWARD
+          : DIRECTION_BACKWARD
       const walkParams = {
-        scrollTop,
-        direction
+        scrollDistance,
+        direction,
       }
 
       this.walkStaticEvent(walkParams)
       this.walkDynamicEvents(walkParams)
 
-      prevScrollTop = scrollTop
+      prevScrollDistance = scrollDistance
     }
 
     const scrollHandler = getScrollHandler(onScroll)
@@ -90,9 +90,13 @@ export default class TinyScrollListener {
     return this
   }
 
-  // 生成触底事件监听器
   getEndReachedEvent() {
-    const { distanceToReachEnd = 100, onEndReached, element } = this.config
+    const {
+      distanceToReachEnd = 100,
+      onEndReached,
+      element,
+      direction = 'vertical',
+    } = this.config
 
     /**
      * 若使用触底函数，则启用相关逻辑
@@ -110,7 +114,7 @@ export default class TinyScrollListener {
      * 如果 isOver 为 true 则不会再触发后续的 onEndReached
      * （例如已经加载了全部数据，不需要再监听触底事件）
      */
-    const done = isOver => {
+    const done = (isOver) => {
       if (!isOver) {
         isEndReacherFreeze = false
         return
@@ -127,52 +131,52 @@ export default class TinyScrollListener {
 
     const endReachedEvent = {
       dynamic: true,
-      distance: () =>
-        element.scrollHeight - element.offsetHeight - distanceToReachEnd,
+      distance: {
+        vertical: () =>
+          element.scrollHeight - element.offsetHeight - distanceToReachEnd,
+        horizontal: () =>
+          element.scrollWidth - element.offsetWidth - distanceToReachEnd,
+      }[direction],
       onGoingOut: () => {
         if (isEndReacherFreeze) return
         isEndReacherFreeze = true
         onEndReached(done)
-      }
+      },
     }
 
     return endReachedEvent
   }
 
-  // 动态事件：distance 动态变化的事件，如触底事件需要根据容器高度决定触发条件，容器高度可能发生变化
   dynamicEvents = []
   genDynamicEvents() {
     const { distanceEvents: configDistanceEvents = [] } = this.config
     const endReachedEvent = this.getEndReachedEvent()
-    const scrollTop = this.getScrollTop()
+    const scrollDistance = this.getScrollDistance()
 
     const dynamicEvents = [...configDistanceEvents, endReachedEvent]
-      .filter(event => event && event.dynamic && isFunction(event.distance))
-      .map(event => ({
+      .filter((event) => event && event.dynamic)
+      .map((event) => ({
         ...event,
-        status: scrollTop > event.distance ? OUTSIDE : INSIDE // 初始化滚动事件节点状态
+        status: scrollDistance > event.distance ? OUTSIDE : INSIDE, // 初始化滚动事件节点状态
       }))
     this.dynamicEvents = dynamicEvents
   }
 
-  // 静态事件：distance 默认不变或只初始化一次后续不变化的事件
   currentStaticEvent
   staticEvents = []
   genStaticEvents() {
     const { distanceEvents: configDistanceEvents = [] } = this.config
-    const scrollTop = this.getScrollTop()
+    const scrollDistance = this.getScrollDistance()
 
     const staticEvents = configDistanceEvents
-      .map(event => ({
+      .map((event) => ({
         ...event,
-        distance: getEventDistance(event)
+        distance: getEventDistance(event),
       }))
-      .filter(event => event.distance >= 0 && !event.dynamic)
+      .filter((event) => event.distance >= 0 && !event.dynamic)
       .map((event, idx) => {
         const staticEvent = {
           ...event,
-          status: scrollTop > event.distance ? OUTSIDE : INSIDE, // 初始化滚动事件节点状态
-          // 使用链表结构优化静态事件的触发顺序
           prevEvent: undefined,
           nextEvent: undefined,
           getPrevEvent: () => {
@@ -186,7 +190,8 @@ export default class TinyScrollListener {
             staticEvent.nextEvent = nextEvent
 
             return nextEvent
-          }
+          },
+          status: scrollDistance > event.distance ? OUTSIDE : INSIDE, // 初始化滚动事件节点状态
         }
 
         return staticEvent
@@ -194,65 +199,77 @@ export default class TinyScrollListener {
 
     this.staticEvents = staticEvents
     this.currentStaticEvent = staticEvents.find(
-      event => event.distance >= scrollTop
+      (event) => event.distance >= scrollDistance
     )
   }
 
-  walkEvent = (event, scrollTop) => {
+  walkEvent = (event, scrollDistance) => {
     const {
       onGoingIn = () => undefined,
       onGoingOut = () => undefined,
-      status
+      status,
     } = event
     const distance = getEventDistance(event)
 
     // 仅当状态值变更时触发 onGoingIn、onGoingOut 函数
     switch (status) {
-      case INSIDE:
-        if (scrollTop > distance) {
+      case INSIDE: {
+        if (scrollDistance > distance) {
           onGoingOut()
           event.status = OUTSIDE
         }
         break
-      case OUTSIDE:
-        if (scrollTop <= distance) {
+      }
+      default:
+      case OUTSIDE: {
+        if (scrollDistance <= distance) {
           onGoingIn()
           event.status = INSIDE
         }
         break
+      }
     }
 
     return event.status !== status
   }
 
-  walkStaticEvent = ({ direction, scrollTop }) => {
+  walkStaticEvent = ({ direction, scrollDistance }) => {
     const current = this.currentStaticEvent
+
+    if (!current) {
+      return
+    }
+
     const prev = current.prevEvent || current.getPrevEvent()
     const next = current.nextEvent || current.getNextEvent()
-    const target = direction === DIRECTION_DOWN ? current : prev
+    const target =
+      direction === DIRECTION_FORWARD
+        ? current
+        : current.status === OUTSIDE
+        ? current
+        : prev
 
     if (target) {
-      const changed = this.walkEvent(target, scrollTop)
+      const changed = this.walkEvent(target, scrollDistance)
 
       // 若发生状态变迁
       if (changed) {
         this.currentStaticEvent =
-          (direction === DIRECTION_DOWN ? next : prev) || current
+          (direction === DIRECTION_FORWARD ? next : prev) || current
 
-        // 递归遍历下一个静态事件，保证单次大跨度滚动时可触发中间所有的静态事件
-        this.walkStaticEvent({ direction, scrollTop })
+        this.walkStaticEvent({ direction, scrollDistance })
       }
     }
   }
 
-  walkDynamicEvents = ({ direction, scrollTop }) => {
+  walkDynamicEvents = ({ direction, scrollDistance }) => {
     this.dynamicEvents
       .sort(
         (prev, next) =>
           (getEventDistance(prev) - getEventDistance(next)) * direction
       )
-      .forEach(event => {
-        this.walkEvent(event, scrollTop)
+      .forEach((event) => {
+        this.walkEvent(event, scrollDistance)
       })
   }
 }
