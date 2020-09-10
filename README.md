@@ -65,7 +65,7 @@ const scrollListener = new TinyScrollListener({
   /**
    * 滚动的监听方向，vertical 为纵向，horizontal 为横向
    */
-  direstion: 'vertical',
+  direction: 'vertical',
 })
 
 // 手动解除监听
